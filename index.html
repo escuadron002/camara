@@ -1,0 +1,244 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Escanear QR</title>
+
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      background: #f4f7fb;
+      text-align: center;
+    }
+
+    h1 {
+      margin-top: 20px;
+      color: #123;
+    }
+
+    #reader {
+      width: 100%;
+      max-width: 500px;
+      margin: 25px auto;
+      background: white;
+      border-radius: 15px;
+      overflow: hidden;
+    }
+
+    #mensaje {
+      margin: 20px auto;
+      max-width: 500px;
+      padding: 15px;
+      border-radius: 10px;
+      background: white;
+    }
+
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 14px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>📷 Escanear código QR</h1>
+
+  <div id="mensaje">
+    Apunta la cámara al código QR del equipo.
+  </div>
+
+  <div id="reader"></div>
+
+  <button onclick="volver()">
+    ← Volver
+  </button>
+
+<script>
+
+const URL_APP =
+  'https://script.google.com/macros/s/AKfycbxf00AANIQH7O_V5wcC5VGFEV0Vl3Y-9VCezXKjrbAakVgQKlJbFD2RH0tKz2Ftehbn/exec';
+
+let scanner = null;
+let procesado = false;
+
+async function iniciarCamara() {
+
+  const mensaje = document.getElementById('mensaje');
+
+  try {
+
+    if (!navigator.mediaDevices ||
+        !navigator.mediaDevices.getUserMedia) {
+
+      mensaje.innerHTML =
+        '❌ Este navegador no permite acceder a la cámara.';
+
+      return;
+    }
+
+    mensaje.innerHTML =
+      '📷 Solicitando permiso para usar la cámara...';
+
+    const stream =
+      await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: {
+            ideal: 'environment'
+          }
+        },
+        audio: false
+      });
+
+    stream.getTracks().forEach(track => track.stop());
+
+    mensaje.innerHTML =
+      '📷 Cámara preparada. Apunta al código QR.';
+
+    iniciarScanner();
+
+  } catch (error) {
+
+    console.error(error);
+
+    mensaje.innerHTML =
+      '❌ No se puede acceder a la cámara.<br><br>' +
+      'Comprueba que Chrome tenga permiso para usar la cámara.';
+
+  }
+}
+
+
+function iniciarScanner() {
+
+  scanner = new Html5Qrcode("reader");
+
+  const ancho =
+    Math.min(window.innerWidth * 0.85, 400);
+
+  scanner.start(
+
+    {
+      facingMode: "environment"
+    },
+
+    {
+      fps: 10,
+      qrbox: {
+        width: ancho * 0.75,
+        height: ancho * 0.75
+      }
+    },
+
+    function(decodedText) {
+
+      if (procesado) return;
+
+      procesado = true;
+
+      procesarQR(decodedText);
+
+    },
+
+    function(errorMessage) {
+      // Errores normales mientras busca el QR.
+    }
+
+  ).catch(function(error) {
+
+    console.error(error);
+
+    document.getElementById('mensaje').innerHTML =
+      '❌ No se pudo iniciar la cámara.<br><br>' +
+      'Revisa los permisos de cámara de Chrome.';
+
+  });
+}
+
+
+function procesarQR(texto) {
+
+  let numeroSerie = texto.trim();
+
+  try {
+
+    const url = new URL(texto);
+
+    const id = url.searchParams.get('id');
+
+    if (id) {
+      numeroSerie = id;
+    }
+
+  } catch (e) {
+    // El QR puede contener directamente el número de serie.
+  }
+
+  if (scanner) {
+
+    scanner.stop()
+      .then(() => {
+        scanner.clear();
+        irAlEquipo(numeroSerie);
+      })
+      .catch(() => {
+        irAlEquipo(numeroSerie);
+      });
+
+  } else {
+
+    irAlEquipo(numeroSerie);
+
+  }
+}
+
+
+function irAlEquipo(numeroSerie) {
+
+  window.location.href =
+    URL_APP + '?id=' + encodeURIComponent(numeroSerie);
+
+}
+
+
+function volver() {
+
+  if (scanner) {
+
+    scanner.stop()
+      .then(() => {
+        scanner.clear();
+        window.location.href = URL_APP;
+      })
+      .catch(() => {
+        window.location.href = URL_APP;
+      });
+
+  } else {
+
+    window.location.href = URL_APP;
+
+  }
+}
+
+
+window.addEventListener(
+  'load',
+  iniciarCamara
+);
+
+</script>
+
+</body>
+</html>
