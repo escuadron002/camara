@@ -1,0 +1,617 @@
+
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+
+  <meta name="viewport"
+        content="width=device-width,
+                 initial-scale=1.0,
+                 maximum-scale=1.0,
+                 user-scalable=no">
+
+  <title>Escanear código QR</title>
+
+  <script src="https://unpkg.com/html5-qrcode"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      min-height: 100%;
+      background: #000;
+      color: white;
+      font-family: Arial, sans-serif;
+    }
+
+    .cabecera {
+      background: #111827;
+      padding: 18px 15px;
+      text-align: center;
+    }
+
+    .cabecera h1 {
+      margin: 0;
+      font-size: 22px;
+    }
+
+    .cabecera p {
+      margin: 8px 0 0;
+      color: #cbd5e1;
+      font-size: 14px;
+    }
+
+    #reader {
+      width: 100%;
+      max-width: 650px;
+      margin: 0 auto;
+      min-height: 300px;
+    }
+
+    #mensaje {
+      padding: 18px;
+      text-align: center;
+      background: #111827;
+      color: #cbd5e1;
+      line-height: 1.5;
+    }
+
+    #error {
+      display: none;
+      margin: 15px;
+      padding: 15px;
+      border-radius: 12px;
+      background: #991b1b;
+      color: white;
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    .boton {
+      display: block;
+      width: calc(100% - 30px);
+      margin: 15px;
+      padding: 16px;
+      border: 0;
+      border-radius: 14px;
+      background: #2563eb;
+      color: white;
+      font-size: 17px;
+      font-weight: bold;
+    }
+
+    .oculto {
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="cabecera">
+    <h1>📷 Escanear código QR</h1>
+    <p>Apunta la cámara al código del equipo</p>
+  </div>
+
+  <div id="error"></div>
+
+  <div id="reader"></div>
+
+  <div id="mensaje">
+    Cuando Chrome solicite permiso para utilizar la cámara,
+    pulsa <strong>Permitir</strong>.
+  </div>
+
+  <button
+    id="botonReintentar"
+    class="boton oculto"
+    onclick="iniciarCamara()">
+    🔄 Volver a intentar
+  </button>
+
+  <button
+    class="boton"
+    onclick="volver()">
+    ✕ Cerrar cámara
+  </button>
+
+
+  <script>
+
+    let scanner = null;
+    let leyendo = false;
+    let procesando = false;
+
+
+    /*
+     * DIRECCIÓN DE TU WEB APP
+     */
+
+    const URL_APP =
+      'https://script.google.com/macros/s/AKfycbxf00AANIQH7O_V5wcC5VGFEV0Vl3Y-9VCezXKjrbAakVgQKlJbFD2RH0tKz2Ftehbn/exec';
+
+
+    /*
+     * INICIAR
+     */
+
+    window.addEventListener(
+      'load',
+      function() {
+
+        iniciarCamara();
+
+      }
+    );
+
+
+    /*
+     * ABRIR CÁMARA
+     */
+
+    async function iniciarCamara() {
+
+      if (leyendo) {
+        return;
+      }
+
+      ocultarError();
+
+      document
+        .getElementById('botonReintentar')
+        .classList.add('oculto');
+
+
+      /*
+       * Comprobamos que el navegador
+       * tenga acceso a la cámara.
+       */
+
+      if (
+        !navigator.mediaDevices ||
+        !navigator.mediaDevices.getUserMedia
+      ) {
+
+        mostrarError(
+          'Este navegador no permite acceder a la cámara. ' +
+          'Abre esta página directamente con Chrome.'
+        );
+
+        return;
+      }
+
+
+      let stream = null;
+
+
+      try {
+
+        /*
+         * IMPORTANTE:
+         *
+         * Esta llamada hace que Chrome
+         * solicite el permiso de cámara.
+         */
+
+        stream =
+          await navigator.mediaDevices.getUserMedia({
+
+            video: {
+              facingMode: {
+                ideal: 'environment'
+              }
+            },
+
+            audio: false
+
+          });
+
+
+        /*
+         * Ya tenemos permiso.
+         *
+         * Cerramos esta cámara de prueba.
+         */
+
+        stream
+          .getTracks()
+          .forEach(
+            function(track) {
+              track.stop();
+            }
+          );
+
+
+      } catch (error) {
+
+        mostrarError(
+          obtenerMensajeError(error)
+        );
+
+        document
+          .getElementById('botonReintentar')
+          .classList.remove('oculto');
+
+        return;
+      }
+
+
+      /*
+       * Crear lector QR
+       */
+
+      try {
+
+        scanner =
+          new Html5Qrcode(
+            'reader'
+          );
+
+
+        const lado =
+          Math.min(
+            window.innerWidth,
+            window.innerHeight
+          );
+
+
+        const tamañoQR =
+          Math.max(
+            220,
+            Math.floor(
+              lado * 0.70
+            )
+          );
+
+
+        await scanner.start(
+
+          {
+            facingMode:
+              'environment'
+          },
+
+          {
+            fps: 10,
+
+            qrbox: {
+              width: tamañoQR,
+              height: tamañoQR
+            },
+
+            aspectRatio: 1.0
+
+          },
+
+          function(decodedText) {
+
+            procesarQR(
+              decodedText
+            );
+
+          },
+
+          function(errorMessage) {
+
+            /*
+             * No mostramos errores normales
+             * de lectura.
+             */
+
+          }
+
+        );
+
+
+        leyendo = true;
+
+      } catch (error) {
+
+        mostrarError(
+          'No se pudo iniciar el lector QR. ' +
+          (error.message || '')
+        );
+
+        document
+          .getElementById('botonReintentar')
+          .classList.remove('oculto');
+
+      }
+
+    }
+
+
+    /*
+     * PROCESAR QR
+     */
+
+    async function procesarQR(
+      texto
+    ) {
+
+      if (procesando) {
+        return;
+      }
+
+      procesando = true;
+
+
+      try {
+
+        if (scanner) {
+
+          await scanner.stop();
+
+          await scanner.clear();
+
+        }
+
+      } catch (e) {
+      }
+
+
+      leyendo = false;
+
+
+      let numeroSerie = '';
+
+
+      /*
+       * El QR normalmente contiene
+       * una URL como:
+       *
+       * https://.../exec?id=12345
+       */
+
+      try {
+
+        const url =
+          new URL(
+            texto
+          );
+
+        const id =
+          url.searchParams.get(
+            'id'
+          );
+
+        if (id) {
+
+          numeroSerie =
+            id.trim();
+
+        }
+
+      } catch (e) {
+
+        /*
+         * Si el QR contiene directamente
+         * el número de serie.
+         */
+
+        numeroSerie =
+          String(
+            texto
+          ).trim();
+
+      }
+
+
+      if (!numeroSerie) {
+
+        procesando = false;
+
+        mostrarError(
+          'No se ha podido obtener el número de serie del código QR.'
+        );
+
+        return;
+      }
+
+
+      /*
+       * Ir a tu aplicación
+       */
+
+      window.location.href =
+        URL_APP +
+        '?id=' +
+        encodeURIComponent(
+          numeroSerie
+        );
+
+    }
+
+
+    /*
+     * MENSAJE DE ERROR
+     */
+
+    function obtenerMensajeError(
+      error
+    ) {
+
+      if (!error) {
+
+        return 'No se puede acceder a la cámara.';
+
+      }
+
+
+      if (
+        error.name ===
+        'NotAllowedError'
+      ) {
+
+        return (
+          'Chrome no ha permitido el acceso a la cámara. ' +
+          'Cuando aparezca la ventana de permisos, pulsa "Permitir". ' +
+          'Si no aparece, pulsa el icono de permisos de la barra de Chrome ' +
+          'y activa la cámara.'
+        );
+
+      }
+
+
+      if (
+        error.name ===
+        'PermissionDeniedError'
+      ) {
+
+        return (
+          'El permiso de cámara ha sido rechazado. ' +
+          'Activa la cámara para esta página en los permisos de Chrome.'
+        );
+
+      }
+
+
+      if (
+        error.name ===
+        'NotFoundError'
+      ) {
+
+        return (
+          'No se ha encontrado ninguna cámara.'
+        );
+
+      }
+
+
+      if (
+        error.name ===
+        'NotReadableError'
+      ) {
+
+        return (
+          'La cámara está siendo utilizada por otra aplicación. ' +
+          'Cierra otras aplicaciones que estén usando la cámara y vuelve a intentarlo.'
+        );
+
+      }
+
+
+      if (
+        error.name ===
+        'SecurityError'
+      ) {
+
+        return (
+          'Chrome ha bloqueado el acceso a la cámara por motivos de seguridad.'
+        );
+
+      }
+
+
+      return (
+        'No se puede acceder a la cámara. ' +
+        (error.message || '')
+      );
+
+    }
+
+
+    /*
+     * MOSTRAR ERROR
+     */
+
+    function mostrarError(
+      texto
+    ) {
+
+      const elemento =
+        document.getElementById(
+          'error'
+        );
+
+      elemento.textContent =
+        texto;
+
+      elemento.style.display =
+        'block';
+
+    }
+
+
+    /*
+     * OCULTAR ERROR
+     */
+
+    function ocultarError() {
+
+      const elemento =
+        document.getElementById(
+          'error'
+        );
+
+      elemento.style.display =
+        'none';
+
+    }
+
+
+    /*
+     * VOLVER
+     */
+
+    async function volver() {
+
+      try {
+
+        if (scanner) {
+
+          await scanner.stop();
+
+          await scanner.clear();
+
+        }
+
+      } catch (e) {
+      }
+
+
+      /*
+       * Volvemos a la aplicación.
+       */
+
+      window.location.href =
+        URL_APP;
+
+    }
+
+
+    /*
+     * Cuando se cierra la página,
+     * detener la cámara.
+     */
+
+    window.addEventListener(
+      'beforeunload',
+      async function() {
+
+        try {
+
+          if (scanner) {
+
+            await scanner.stop();
+
+          }
+
+        } catch (e) {
+        }
+
+      }
+    );
+
+  </script>
+
+</body>
+
+</html>
