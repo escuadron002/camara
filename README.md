@@ -1,1 +1,0 @@
-# camara.html
